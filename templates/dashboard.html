@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+    <div class="container mt-4 mb-5">
+        
+        <!-- Navbar Header -->
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1>Welcome, {{ user.username }}!</h1>
+            <a href="/logout" class="btn btn-outline-danger">Log Out</a>
+        </div>
+
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages%}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <!-- Create Note Card -->
+        <div class="card shadow mb-4 p-4">
+            <h3>Create a New Note</h3>
+            <form method="POST">
+                <div class="mb-3">
+                    <input type="text" name="title" class="form-control" placeholder="Note Title" required>
+                </div>
+                <div class="mb-3">
+                    <select name="category" class="form-select">
+                        <option value="General">General</option>
+                        <option value="Work">Work</option>
+                        <option value="Personal">Personal</option>
+                        <option value="Ideas">Ideas</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <textarea name="content" class="form-control" rows="3" placeholder="Write your note here..." required></textarea>
+                </div>
+                <button type="submit" class="btn btn-success">Save Note</button>
+            </form>
+        </div>
+
+        <!-- Search & Filter Bar -->
+        <form method="GET" action="/dashboard" class="row g-2 mb-4">
+            <div class="col-md-6">
+                <input type="text" name="search" class="form-control" placeholder="Search your notes..." value="{{ search_query }}">
+            </div>
+            <div class="col-md-4">
+                <select name="category" class="form-select">
+                    <option value="">All Categories</option>
+                    {% for cat in categories %}
+                        <option value="{{ cat }}" {% if selected_category == cat %}selected{% endif %}>{{ cat }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2 d-flex gap-1">
+                <button class="btn btn-outline-primary w-100" type="submit">Filter</button>
+                {% if search_query or selected_category %}
+                    <a href="/dashboard" class="btn btn-outline-secondary">Reset</a>
+                {% endif %}
+            </div>
+        </form>
+
+        <!-- Saved Notes List -->
+        <h3>Your Saved Notes</h3>
+        {% if posts %}
+            <div class="row">
+                {% for post in posts %}
+                    <div class="col-md-4 mb-3">
+                        <div class="card shadow-sm h-100">
+                            <div class="card-body">
+                                <span class="badge bg-secondary mb-2">{{ post.category }}</span>
+                                <h5 class="card-title">{{ post.title }}</h5>
+                                <p class="card-text">{{ post.content }}</p>
+                            </div>
+                            <div class="card-footer bg-transparent d-flex justify-content-between">
+                                <a href="/edit/{{ post.id }}" class="btn btn-sm btn-outline-primary">Edit</a>
+                                <a href="/delete/{{ post.id }}" class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete this note?');">Delete</a>
+                            </div>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+
+            <!-- Pagination Controls -->
+            <nav class="mt-4">
+                <ul class="pagination justify-content-center">
+                    <!-- Previous Page -->
+                    <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+                        <a class="page-link" href="{{ url_for('dashboard', page=pagination.prev_num, search=search_query, category=selected_category) }}">Previous</a>
+                    </li>
+
+                    <!-- Page Numbers -->
+                    {% for page_num in pagination.iter_pages(left_edge=1, right_edge=1, left_current=1, right_current=2) %}
+                        {% if page_num %}
+                            <li class="page-item {% if pagination.page == page_num %}active{% endif %}">
+                                <a class="page-link" href="{{ url_for('dashboard', page=page_num, search=search_query, category=selected_category) }}">{{ page_num }}</a>
+                            </li>
+                        {% else %}
+                            <li class="page-item disabled"><span class="page-link">...</span></li>
+                        {% endif %}
+                    {% endfor %}
+
+                    <!-- Next Page -->
+                    <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+                        <a class="page-link" href="{{ url_for('dashboard', page=pagination.next_num, search=search_query, category=selected_category) }}">Next</a>
+                    </li>
+                </ul>
+            </nav>
+
+        {% else %}
+            <p class="text-muted">No notes found.</p>
+        {% endif %}
+    </div>
+    
+    <!-- Dynamic API Section -->
+    <div class="card shadow mt-5 p-4 bg-white">
+        <h3>Live Notes (Loaded via JavaScript API)</h3>
+        <p class="text-muted">This section fetches data asynchronously using <code>fetch('/api/notes')</code> without reloading the page!</p>
+        
+        <button id="load-api-btn" class="btn btn-dark mb-3">Fetch Notes via API</button>
+        
+        <ul id="api-notes-list" class="list-group">
+            <!-- JavaScript will inject notes here -->
+        </ul>
+    </div>
+
+    <!-- JavaScript to handle the API call -->
+    <script>
+        document.getElementById('load-api-btn').addEventListener('click', function() {
+            fetch('/api/notes')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    const listElement = document.getElementById('api-notes-list');
+                    listElement.innerHTML = ''; // Clear previous items
+                    
+                    if (data.length === 0) {
+                        listElement.innerHTML = '<li class="list-group-item text-muted">No notes found via API.</li>';
+                        return;
+                    }
+                    
+                    data.forEach(note => {
+                        const li = document.createElement('li');
+                        li.className = 'list-group-item d-flex justify-content-between align-items-center';
+                        li.innerHTML = `
+                            <div>
+                                <strong>${note.title}</strong> (${note.category})<br>
+                                <small class="text-muted">${note.content}</small>
+                            </div>
+                            <span class="badge bg-primary rounded-pill">ID: ${note.id}</span>
+                        `;
+                        listElement.appendChild(li);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error fetching notes:', error);
+                });
+        });
+    </script>
+</body>
+</html>
